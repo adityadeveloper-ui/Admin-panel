@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#060b14"><meta name="robots" content="noindex"><title>Shop Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -238,11 +238,12 @@ const cfg={url:'https://tijqvvqsqsgxwusmhwms.supabase.co',key:'sb_publishable_4p
 let pend={},bnBuilt=[],rows={},base=[],prods=[],nat=[],ord=[],bns=[],scr=null,cur=null,view='dash',q='',role=sessionStorage.getItem('ap_role')||'',cls=[];
 function toast(t,k){const e=$('toast');e.className=k||'';e.innerHTML=(k==='er'?IC.er:IC.ok)+'<span>'+esc(t)+'</span>';e.style.display='flex';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',k==='er'?6000:3200)}
 const hd=()=>({apikey:cfg.key,Authorization:'Bearer '+cfg.key,'Content-Type':'application/json'});
-async function putNow(key,value){const r=await fetch(cfg.url+'/rest/v1/site_config?on_conflict=key',{method:'POST',headers:{...hd(),Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({key:PFX+key,value})});if(!r.ok)throw new Error('Save failed ('+r.status+'). Please try again.')}
-async function put(key,value){if(key==='owner'||key==='clients')return putNow(key,value);pend[key]=value;pendSave()}
+async function vfy(keys){for(const k of keys){const r=await fetch(cfg.url+'/rest/v1/site_config?select=key&key=eq.'+encodeURIComponent(k),{headers:hd(),cache:'no-store'});const a=r.ok?await r.json():[];if(!a.length)throw new Error('Not saved in database ('+k+'). Supabase is blocking the write: allow insert, update AND select on table site_config for the anon role.')}}
+async function putNow(key,value){const r=await fetch(cfg.url+'/rest/v1/site_config?on_conflict=key',{method:'POST',headers:{...hd(),Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({key:PFX+key,value})});if(!r.ok)throw new Error('Save failed ('+r.status+'). '+(r.status===401||r.status===403?'Supabase blocked it: allow insert+update on table site_config for the anon role.':'Please try again.'));await vfy([PFX+key])}
+async function put(key,value){await putNow(key,value);delete pend[key];pendSave()}
 function pendSave(){LS('ap_pend',pend);bar()}
 function bar(){const n=Object.keys(pend).length;$('svb').classList.toggle('hide',!n);$('svt').textContent=n+' unsaved change'+(n>1?'s':'')}
-async function publish(){const ks=Object.keys(pend);if(!ks.length){toast('Nothing to save');return true}const b=$('svg');b.disabled=true;try{const r=await fetch(cfg.url+'/rest/v1/site_config?on_conflict=key',{method:'POST',headers:{...hd(),Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(ks.map(k=>({key:PFX+k,value:pend[k]})))});if(!r.ok)throw new Error('Save failed ('+r.status+'). Please try again.');pend={};pendSave();toast('Saved. Your live shop is updated.');return true}catch(e){toast(e.message,'er');return false}finally{b.disabled=false}}
+async function publish(){const ks=Object.keys(pend);if(!ks.length){toast('Nothing to save');return true}const b=$('svg');b.disabled=true;try{const r=await fetch(cfg.url+'/rest/v1/site_config?on_conflict=key',{method:'POST',headers:{...hd(),Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(ks.map(k=>({key:PFX+k,value:pend[k]})))});if(!r.ok)throw new Error('Save failed ('+r.status+'). '+(r.status===401||r.status===403?'Supabase blocked it: allow insert+update on table site_config for the anon role.':'Please try again.'));await vfy(ks.map(k=>PFX+k));pend={};pendSave();toast('Saved and verified in database. Reload the shop to see it.');return true}catch(e){toast(e.message,'er');return false}finally{b.disabled=false}}
 $('svg').onclick=publish;
 $('svd').onclick=()=>{if(!confirm('Discard all unsaved changes?'))return;pend={};pendSave();load()};
 addEventListener('beforeunload',e=>{if(Object.keys(pend).length){e.preventDefault();e.returnValue=''}});
@@ -252,9 +253,9 @@ mk();draw();loadBase()}
 async function loadBase(){const tried=[];let nb=[];for(const f of[...new Set([cfg.shop,'web-1-1.html','web-1.html'])]){try{const r=await fetch(f,{cache:'no-store'});if(!r.ok){tried.push(f+' (error '+r.status+')');continue}const dp=new DOMParser().parseFromString(await r.text(),'text/html'),el=dp.getElementById('products');if(!el){tried.push(f+' (no products inside)');continue}nb=JSON.parse(el.textContent)||[];bnBuilt=[...dp.querySelectorAll('#hsl img')].map(x=>({u:x.getAttribute('src')||'',on:true})).filter(x=>x.u);break}catch(e){tried.push(f+(location.protocol==='file:'?' (open the panel from your website link, not from a file)':' (could not load)'))}}if(nb.length)base=nb;if(!base.length&&PFX==='')toast('Shop file not loaded: '+tried.join(', '),'er')
 if(!bns.length&&bnBuilt.length)bns=bnBuilt.map(b=>({...b}));mk();draw()}
 function mk(){const out=[],seen={};base.forEach(p=>{seen[p.id]=1;const r=rows[p.id];if(r&&r.del)return;out.push(r?{...p,...r}:p)});Object.keys(rows).forEach(k=>{const r=rows[k];if(seen[k]||r.del||!r.n)return;out.push(r)});nat=out;const pos={};ord.forEach((k,i)=>{if(!(k in pos))pos[k]=i});prods=[...out.filter(p=>String(p.id) in pos).sort((a,b)=>pos[String(a.id)]-pos[String(b.id)]),...out.filter(p=>!(String(p.id) in pos))]}
-let ot;function saveOrd(){clearTimeout(ot);ot=setTimeout(async()=>{try{await put('order',ord);toast('Order changed. Tap Save to go live.')}catch(e){toast(e.message,'er')}},700)}
+let ot;function saveOrd(){clearTimeout(ot);ot=setTimeout(async()=>{try{await put('order',ord);toast('Order saved. Live now.')}catch(e){toast(e.message,'er')}},700)}
 function mv(id,d){const ids=prods.map(p=>String(p.id)),i=ids.indexOf(String(id)),j=i+d;if(i<0||j<0||j>=ids.length)return;[ids[i],ids[j]]=[ids[j],ids[i]];ord=ids;mk();draw();const el=document.querySelector('#list .it[data-id="'+id+'"]');if(el)el.scrollIntoView({block:'center'});saveOrd()}
-async function sp(p){try{await put('prod:'+p.id,p);rows[p.id]=p;mk();draw();toast('Changed. Tap Save to go live.')}catch(e){toast(e.message,'er')}}
+async function sp(p){try{await put('prod:'+p.id,p);rows[p.id]=p;mk();draw();toast('Saved. Live now.')}catch(e){toast(e.message,'er')}}
 /* views */
 function go(v){view=v;['dash','cat','scr','bn'].forEach(k=>{const el=$('v_'+k);if(el)el.classList.toggle('hide',k!==v)});document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));$('mnu').classList.add('hide');draw();scrollTo(0,0)}
 const stc=p=>{const s=p.st;if(s===''||s==null)return['No limit',''];const n=Number(s);return n<=0?['Out of stock','out']:n<=5?['Low: '+n,'or']:[n+' in stock','']};
@@ -271,7 +272,7 @@ else if(view==='bn')bnDraw();}
 const fnd=el=>({...prods.find(p=>String(p.id)===el.closest('.it').dataset.id)});
 $('list').onchange=e=>{const i=e.target,f=i.dataset.f;if(!f)return;const p=fnd(i),v=i.value.trim();p[f]=f==='st'?(v===''?'':Math.max(0,Math.floor(+v)||0)):(+v||0);sp(p)};
 $('list').onclick=e=>{const b=e.target.closest('[data-a]');if(!b)return;const p=fnd(b),a=b.dataset.a;if(a==='ed')edit(p);else if(a==='del'){if(confirm('Delete this product from your shop?'))sp({id:p.id,del:true})}else if(a==='up'||a==='dn')mv(p.id,a==='up'?-1:1);else{const c=p.st===''||p.st==null?0:Number(p.st);p.st=Math.max(0,c+(a==='inc'?1:-1));sp(p)}};
-$('dla').onclick=()=>{const all=[...nat];if(!all.length){toast('No products to delete','er');return}if(!confirm('Delete ALL '+all.length+' products from your shop? This cannot be undone once you tap Save.'))return;if(prompt('Type DELETE to confirm')!=='DELETE'){toast('Cancelled');return}all.forEach(p=>{const d={id:p.id,del:true};pend['prod:'+p.id]=d;rows[p.id]=d});ord=[];pend.order=ord;pendSave();mk();draw();toast('All '+all.length+' products deleted. Tap Save to go live.')};
+$('dla').onclick=()=>{const all=[...nat];if(!all.length){toast('No products to delete','er');return}if(!confirm('Delete ALL '+all.length+' products from your shop? This cannot be undone once you tap Save.'))return;if(prompt('Type DELETE to confirm')!=='DELETE'){toast('Cancelled');return}all.forEach(p=>{const d={id:p.id,del:true};pend['prod:'+p.id]=d;rows[p.id]=d});ord=[];pend.order=ord;pendSave();mk();draw();publish()};
 $('gs').oninput=e=>{q=e.target.value;if(view!=='cat')go('cat');else draw()};
 /* scrape */
 $('pa').onclick=async()=>{try{$('sl').value=await navigator.clipboard.readText()}catch(e){toast('Paste manually: clipboard access was blocked','er')}};
@@ -292,7 +293,7 @@ ${o.rv.slice(0,2).map(r=>`<div class="rv"><span class="st">${r.s} ★</span><b>$
 $('pv').onclick=e=>{const m=e.target.closest('[data-m]');if(m){const i=+m.dataset.m;if(i){const[u]=scr.g.splice(i,1);scr.g.unshift(u);pvDraw()}else if(scr.g.length>1&&confirm('Remove this image?')){scr.g.shift();pvDraw()}return}if(e.target.closest('#s_sv'))saveScr()};
 async function saveScr(){const b=$('s_sv');Object.assign(scr,{n:$('s_n').value.trim(),p:+$('s_p').value,m:+$('s_m').value||+$('s_p').value,st:$('s_st').value,dl:+$('s_dl').value||3,c:$('s_c').value,sl:$('s_sl').value.trim()});
 if(!scr.n||!(scr.p>0)||!scr.g.length)return toast('Name, price and at least one image are needed','er');b.disabled=true;b.classList.add('busy');
-try{const o=build(scr);if(o.st===undefined)o.st='';await put('prod:'+o.id,o);rows[o.id]=o;mk();scr=null;$('pv').classList.add('hide');$('sl').value=$('op').value=$('om').value='';toast('Product added. Tap Save to go live.');go('cat')}catch(e){toast(e.message,'er');b.disabled=false;b.classList.remove('busy')}}
+try{const o=build(scr);if(o.st===undefined)o.st='';await put('prod:'+o.id,o);rows[o.id]=o;mk();scr=null;$('pv').classList.add('hide');$('sl').value=$('op').value=$('om').value='';toast('Product added. Live now.');go('cat')}catch(e){toast(e.message,'er');b.disabled=false;b.classList.remove('busy')}}
 /* edit sheet */
 const fld=(id,l,v,t)=>`<label>${l}</label>`+(t==='a'?`<textarea id="${id}">${esc(v)}</textarea>`:`<input id="${id}" value="${esc(v)}"${t==='n'?' inputmode="decimal"':''}>`);
 function edit(p){cur={...p,rv:(p.rv||[]).map(r=>({...r}))};const g=cur.g&&cur.g.length?cur.g:[cur.i].filter(Boolean);$('md').classList.remove('hide');document.body.style.overflow='hidden';$('e_id').textContent='ID: '+cur.id;
@@ -331,5 +332,5 @@ $('lgo').onclick=()=>{sessionStorage.clear();localStorage.removeItem('ap_keep');
 const s=await chkSite(SITE);
 if(s.net){$('sidc').style.display='block';$('lgl').style.display='none';$('sid_in').value=SITE;$('sid_er').textContent='Could not verify. Check your internet and tap Continue.';return}
 if(!s.ok)return kick(s.m);
-window._chk=Date.now();PFX=s.L?'':'s:'+s.tk+':';pend=LS('ap_pend')||{};bar();unlock('owner',false)})();
+window._chk=Date.now();PFX=s.L?'':'s:'+s.tk+':';pend=LS('ap_pend')||{};bar();unlock('owner',false);if(Object.keys(pend).length)publish()})();
 </script></body></html>
